@@ -169,6 +169,9 @@ config CRC8
 	  when they need to do cyclic redundancy check according CRC8
 	  algorithm. Module will be called crc8.
 
+config XXHASH
+	tristate
+
 config AUDIT_GENERIC
 	bool
 	depends on AUDIT && !AUDIT_ARCH
@@ -198,6 +201,14 @@ config LZ4HC_COMPRESS
 config LZ4_DECOMPRESS
 	tristate
 
+config ZSTD_COMPRESS
+	select XXHASH
+	tristate
+
+config ZSTD_DECOMPRESS
+	select XXHASH
+	tristate
+
 source "lib/xz/Kconfig"
 
 #
@@ -221,6 +232,26 @@ config DECOMPRESS_XZ
 config DECOMPRESS_LZO
 	select LZO_DECOMPRESS
 	tristate
+
+config DECOMPRESS_LZ4
+	select LZ4_DECOMPRESS
+	tristate
+
+config LZO_SOFT_ALGO
+	tristate "Soft LZO Algo"
+	select LZO_COMPRESS
+	select LZO_DECOMPRESS
+	default y
+	help
+	Support for Soft LZO ALGO.
+
+config LZO_HW_ALGO
+	tristate "HW LZO Algo"
+	select LZO_COMPRESS
+	select LZO_DECOMPRESS
+	default n
+	help
+	Support for HW LZO ALGO.
 
 #
 # Generic allocator support is selected if needed
@@ -309,9 +340,9 @@ config HAS_IOMEM
 	select GENERIC_IO
 	default y
 
-config HAS_IOPORT_MAP
+config HAS_IOPORT
 	boolean
-	depends on HAS_IOMEM && !NO_IOPORT_MAP
+	depends on HAS_IOMEM && !NO_IOPORT
 	default y
 
 config HAS_DMA
@@ -415,21 +446,5 @@ config OID_REGISTRY
 
 config UCS2_STRING
         tristate
-
-config QMI_ENCDEC
-	bool "QMI Encode/Decode Library"
-	help
-	  Library to encode & decode QMI messages from within
-	  the kernel. The kernel drivers encode the C structure into
-	  QMI message wire format and then send it over a transport.
-	  The kernel drivers receive the QMI message over a transport
-	  and then decode it into a C structure.
-
-config QMI_ENCDEC_DEBUG
-	bool "QMI Encode/Decode Library Debug"
-	help
-	  Kernel config option to enable debugging QMI Encode/Decode
-	  library. This will log the information regarding the element
-	  and message being encoded & decoded.
 
 endmenu
