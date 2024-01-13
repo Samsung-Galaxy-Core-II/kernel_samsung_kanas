@@ -32,8 +32,6 @@ static int all_versions = 0;
 static int external_module = 0;
 /* Warn about section mismatch in vmlinux if set to 1 */
 static int vmlinux_section_warnings = 1;
-/* Exit with an error when there is a section mismatch if set to 1 */
-static int section_error_on_mismatch;
 /* Only warn about unresolved symbols */
 static int warn_unresolved = 0;
 /* How a symbol is exported */
@@ -607,7 +605,10 @@ static void handle_modversions(struct module *mod, struct elf_info *info,
 
 	switch (sym->st_shndx) {
 	case SHN_COMMON:
-		warn("\"%s\" [%s] is COMMON symbol\n", symname, mod->name);
+		if (!strncmp(symname, "__gnu_lto_", sizeof("__gnu_lto_")-1)) {
+			/* Should warn here, but modpost runs before the linker */
+		} else
+			warn("\"%s\" [%s] is COMMON symbol\n", symname, mod->name);
 		break;
 	case SHN_ABS:
 		/* CRC'd symbol */
@@ -840,6 +841,7 @@ static const char *section_white_list[] =
 	".xt.lit",         /* xtensa */
 	".arcextmap*",			/* arc */
 	".gnu.linkonce.arcext*",	/* arc : modules */
+	".gnu.lto*",
 	NULL
 };
 
@@ -1480,6 +1482,10 @@ static void check_section_mismatch(const char *modname, struct elf_info *elf,
 		to = find_elf_symbol(elf, r->r_addend, sym);
 		tosym = sym_name(elf, to);
 
+		if (!strncmp(fromsym, "reference___initcall",
+				sizeof("reference___initcall")-1))
+			return;
+
 		/* check whitelist - we may ignore it */
 		if (secref_whitelist(mismatch,
 					fromsec, fromsym, tosec, tosym)) {
@@ -1705,6 +1711,19 @@ static void check_sec_ref(struct module *mod, const char *modname,
 	}
 }
 
+static char *remove_dot(char *s)
+{
+	char *end;
+	int n = strcspn(s, ".");
+
+	if (n > 0 && s[n] != 0) {
+		strtoul(s + n + 1, &end, 10);
+		if  (end > s + n + 1 && (*end == '.' || *end == 0))
+			s[n] = 0;
+	}
+	return s;
+}
+
 static void read_symbols(char *modname)
 {
 	const char *symname;
@@ -1743,7 +1762,7 @@ static void read_symbols(char *modname)
 	}
 
 	for (sym = info.symtab_start; sym < info.symtab_stop; sym++) {
-		symname = info.strtab + sym->st_name;
+		symname = remove_dot(info.strtab + sym->st_name);
 
 		handle_modversions(mod, &info, sym, symname);
 		handle_moddevtable(mod, &info, sym, symname);
@@ -2158,7 +2177,7 @@ int main(int argc, char **argv)
 	struct ext_sym_list *extsym_iter;
 	struct ext_sym_list *extsym_start = NULL;
 
-	while ((opt = getopt(argc, argv, "i:I:e:msST:o:awM:K:E")) != -1) {
+	while ((opt = getopt(argc, argv, "i:I:e:msST:o:awM:K:")) != -1) {
 		switch (opt) {
 		case 'i':
 			kernel_read = optarg;
@@ -2195,9 +2214,6 @@ int main(int argc, char **argv)
 			break;
 		case 'w':
 			warn_unresolved = 1;
-			break;
-		case 'E':
-			section_error_on_mismatch = 1;
 			break;
 		default:
 			exit(1);
@@ -2251,23 +2267,11 @@ int main(int argc, char **argv)
 
 	if (dump_write)
 		write_dump(dump_write);
-
-	if (sec_mismatch_count && !sec_mismatch_verbose) {
-		merror(
-		"modpost: Found %d section mismatch(es).\n"
-		"To see full details build your kernel with:\n"
-		"'make CONFIG_DEBUG_SECTION_MISMATCH=y'\n",
-		sec_mismatch_count);
-
-	}
-
-	if (sec_mismatch_count && section_error_on_mismatch) {
-		err |= 1;
-		printf(
-		"To build the kernel despite the mismatches, "
-		"build with:\n'make CONFIG_NO_ERROR_ON_MISMATCH=y'\n"
-		"(NOTE: This is not recommended)\n");
-	}
+	if (sec_mismatch_count && !sec_mismatch_verbose)
+		warn("modpost: Found %d section mismatch(es).\n"
+		     "To see full details build your kernel with:\n"
+		     "'make CONFIG_DEBUG_SECTION_MISMATCH=y'\n",
+		     sec_mismatch_count);
 
 	return err;
 }
