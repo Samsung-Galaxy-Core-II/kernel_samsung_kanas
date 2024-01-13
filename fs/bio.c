@@ -114,8 +114,7 @@ static struct kmem_cache *bio_find_or_create_slab(unsigned int extra_size)
 	bslab = &bio_slabs[entry];
 
 	snprintf(bslab->name, sizeof(bslab->name), "bio-%d", entry);
-	slab = kmem_cache_create(bslab->name, sz, ARCH_KMALLOC_MINALIGN,
-				 SLAB_HWCACHE_ALIGN, NULL);
+	slab = kmem_cache_create(bslab->name, sz, 0, SLAB_HWCACHE_ALIGN, NULL);
 	if (!slab)
 		goto out_unlock;
 
@@ -540,7 +539,6 @@ void __bio_clone(struct bio *bio, struct bio *bio_src)
 	bio->bi_vcnt = bio_src->bi_vcnt;
 	bio->bi_size = bio_src->bi_size;
 	bio->bi_idx = bio_src->bi_idx;
-	bio->bi_dio_inode = bio_src->bi_dio_inode;
 }
 EXPORT_SYMBOL(__bio_clone);
 
@@ -753,7 +751,8 @@ int bio_add_page(struct bio *bio, struct page *page, unsigned int len,
 		 unsigned int offset)
 {
 	struct request_queue *q = bdev_get_queue(bio->bi_bdev);
-	return __bio_add_page(q, bio, page, len, offset, queue_max_sectors(q));
+
+	return __bio_add_page(q, bio, page, len, offset, blk_max_size_offset(q, bio->bi_sector));
 }
 EXPORT_SYMBOL(bio_add_page);
 

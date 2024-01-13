@@ -77,44 +77,10 @@ EXPORT_SYMBOL(__lock_buffer);
 void unlock_buffer(struct buffer_head *bh)
 {
 	clear_bit_unlock(BH_Lock, &bh->b_state);
-	smp_mb__after_atomic();
+	smp_mb__after_clear_bit();
 	wake_up_bit(&bh->b_state, BH_Lock);
 }
 EXPORT_SYMBOL(unlock_buffer);
-
-/*
- * Returns if the page has dirty or writeback buffers. If all the buffers
- * are unlocked and clean then the PageDirty information is stale. If
- * any of the pages are locked, it is assumed they are locked for IO.
- */
-void buffer_check_dirty_writeback(struct page *page,
-				     bool *dirty, bool *writeback)
-{
-	struct buffer_head *head, *bh;
-	*dirty = false;
-	*writeback = false;
-
-	BUG_ON(!PageLocked(page));
-
-	if (!page_has_buffers(page))
-		return;
-
-	if (PageWriteback(page))
-		*writeback = true;
-
-	head = page_buffers(page);
-	bh = head;
-	do {
-		if (buffer_locked(bh))
-			*writeback = true;
-
-		if (buffer_dirty(bh))
-			*dirty = true;
-
-		bh = bh->b_this_page;
-	} while (bh != head);
-}
-EXPORT_SYMBOL(buffer_check_dirty_writeback);
 
 /*
  * Block until a buffer comes unlocked.  This doesn't stop it
@@ -644,17 +610,12 @@ void mark_buffer_dirty_inode(struct buffer_head *bh, struct inode *inode)
 }
 EXPORT_SYMBOL(mark_buffer_dirty_inode);
 
-#ifdef CONFIG_BLK_DEV_IO_TRACE
-static inline void save_dirty_task(struct page *page)
+void mark_buffer_dirty_inode_sync(struct buffer_head *bh, struct inode *inode)
 {
-	/* Save the task that is dirtying this page */
-	page->tsk_dirty = current;
+	set_buffer_sync_flush(bh);
+	mark_buffer_dirty_inode(bh, inode);
 }
-#else
-static inline void save_dirty_task(struct page *page)
-{
-}
-#endif
+EXPORT_SYMBOL(mark_buffer_dirty_inode_sync);
 
 /*
  * Mark the page dirty, and set it dirty in the radix tree, and mark the inode
@@ -674,7 +635,6 @@ static void __set_page_dirty(struct page *page,
 		account_page_dirtied(page, mapping);
 		radix_tree_tag_set(&mapping->page_tree,
 				page_index(page), PAGECACHE_TAG_DIRTY);
-		save_dirty_task(page);
 	}
 	spin_unlock_irqrestore(&mapping->tree_lock, flags);
 	__mark_inode_dirty(mapping->host, I_DIRTY_PAGES);
@@ -1195,6 +1155,34 @@ void mark_buffer_dirty(struct buffer_head *bh)
 }
 EXPORT_SYMBOL(mark_buffer_dirty);
 
+void mark_buffer_dirty_sync(struct buffer_head *bh)
+{
+	WARN_ON_ONCE(!buffer_uptodate(bh));
+
+	/*
+	 * Very *carefully* optimize the it-is-already-dirty case.
+	 *
+	 * Don't let the final "is it dirty" escape to before we
+	 * perhaps modified the buffer.
+	 */
+	if (buffer_dirty(bh)) {
+		smp_mb();
+		if (buffer_dirty(bh))
+			return;
+	}
+
+	set_buffer_sync_flush(bh);
+	if (!test_set_buffer_dirty(bh)) {
+		struct page *page = bh->b_page;
+		if (!TestSetPageDirty(page)) {
+			struct address_space *mapping = page_mapping(page);
+			if (mapping)
+				__set_page_dirty(page, mapping, 0);
+		}
+	}
+}
+EXPORT_SYMBOL(mark_buffer_dirty_sync);
+
 /*
  * Decrement a buffer_head's reference count.  If all buffers against a page
  * have zero reference count, are clean and unlocked, and if the page is clean
@@ -1542,7 +1530,8 @@ static void discard_buffer(struct buffer_head * bh)
  * block_invalidatepage - invalidate part or all of a buffer-backed page
  *
  * @page: the page which is affected
- * @offset: the index of the truncation point
+ * @offset: start of the range to invalidate
+ * @length: length of the range to invalidate
  *
  * block_invalidatepage() is called when all or part of the page has become
  * invalidated by a truncate operation.
@@ -1553,20 +1542,33 @@ static void discard_buffer(struct buffer_head * bh)
  * point.  Because the caller is about to free (and possibly reuse) those
  * blocks on-disk.
  */
-void block_invalidatepage(struct page *page, unsigned long offset)
+void block_invalidatepage(struct page *page, unsigned int offset,
+			  unsigned int length)
 {
 	struct buffer_head *head, *bh, *next;
 	unsigned int curr_off = 0;
+	unsigned int stop = length + offset;
 
 	BUG_ON(!PageLocked(page));
 	if (!page_has_buffers(page))
 		goto out;
+
+	/*
+	 * Check for overflow
+	 */
+	BUG_ON(stop > PAGE_CACHE_SIZE || stop < length);
 
 	head = page_buffers(page);
 	bh = head;
 	do {
 		unsigned int next_off = curr_off + bh->b_size;
 		next = bh->b_this_page;
+
+		/*
+		 * Are we still fully in range ?
+		 */
+		if (next_off > stop)
+			goto out;
 
 		/*
 		 * is this block fully invalidated?
@@ -1588,6 +1590,7 @@ out:
 	return;
 }
 EXPORT_SYMBOL(block_invalidatepage);
+
 
 /*
  * We attach and possibly dirty the buffers atomically wrt
@@ -2937,7 +2940,7 @@ int block_write_full_page_endio(struct page *page, get_block_t *get_block,
 		 * they may have been added in ext3_writepage().  Make them
 		 * freeable here, so the page does not leak.
 		 */
-		do_invalidatepage(page, 0);
+		do_invalidatepage(page, 0, PAGE_CACHE_SIZE);
 		unlock_page(page);
 		return 0; /* don't care */
 	}
@@ -3086,6 +3089,11 @@ int _submit_bh(int rw, struct buffer_head *bh, unsigned long bio_flags)
 		rw |= REQ_META;
 	if (buffer_prio(bh))
 		rw |= REQ_PRIO;
+
+	if(buffer_sync_flush(bh)) {
+		rw |= REQ_SYNC;
+		clear_buffer_sync_flush(bh);
+	}
 
 	bio_get(bio);
 	submit_bio(rw, bio);

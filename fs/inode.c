@@ -1634,12 +1634,12 @@ int should_remove_suid(struct dentry *dentry)
 }
 EXPORT_SYMBOL(should_remove_suid);
 
-static int __remove_suid(struct dentry *dentry, int kill)
+static int __remove_suid(struct vfsmount *mnt, struct dentry *dentry, int kill)
 {
 	struct iattr newattrs;
 
 	newattrs.ia_valid = ATTR_FORCE | kill;
-	return notify_change(dentry, &newattrs);
+	return notify_change2(mnt, dentry, &newattrs);
 }
 
 int file_remove_suid(struct file *file)
@@ -1662,7 +1662,7 @@ int file_remove_suid(struct file *file)
 	if (killpriv)
 		error = security_inode_killpriv(dentry);
 	if (!error && killsuid)
-		error = __remove_suid(dentry, killsuid);
+		error = __remove_suid(file->f_path.mnt, dentry, killsuid);
 	if (!error)
 		inode_has_no_xattr(inode);
 
@@ -1935,3 +1935,34 @@ void inode_dio_done(struct inode *inode)
 		wake_up_bit(&inode->i_state, __I_DIO_WAKEUP);
 }
 EXPORT_SYMBOL(inode_dio_done);
+
+/*
+ * inode_set_flags - atomically set some inode flags
+ *
+ * Note: the caller should be holding i_mutex, or else be sure that
+ * they have exclusive access to the inode structure (i.e., while the
+ * inode is being instantiated).  The reason for the cmpxchg() loop
+ * --- which wouldn't be necessary if all code paths which modify
+ * i_flags actually followed this rule, is that there is at least one
+ * code path which doesn't today --- for example,
+ * __generic_file_aio_write() calls file_remove_suid() without holding
+ * i_mutex --- so we use cmpxchg() out of an abundance of caution.
+ *
+ * In the long run, i_mutex is overkill, and we should probably look
+ * at using the i_lock spinlock to protect i_flags, and then make sure
+ * it is so documented in include/linux/fs.h and that all code follows
+ * the locking convention!!
+ */
+void inode_set_flags(struct inode *inode, unsigned int flags,
+		     unsigned int mask)
+{
+	unsigned int old_flags, new_flags;
+
+	WARN_ON_ONCE(flags & ~mask);
+	do {
+		old_flags = ACCESS_ONCE(inode->i_flags);
+		new_flags = (old_flags & ~mask) | flags;
+	} while (unlikely(cmpxchg(&inode->i_flags, old_flags,
+				  new_flags) != old_flags));
+}
+EXPORT_SYMBOL(inode_set_flags);
