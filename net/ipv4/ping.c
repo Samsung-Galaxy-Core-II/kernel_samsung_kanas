@@ -150,7 +150,7 @@ void ping_hash(struct sock *sk)
 void ping_unhash(struct sock *sk)
 {
 	struct inet_sock *isk = inet_sk(sk);
-	pr_debug("ping_v4_unhash(isk=%p,isk->num=%u)\n", isk, isk->inet_num);
+	pr_debug("ping_unhash(isk=%p,isk->num=%u)\n", isk, isk->inet_num);
 	write_lock_bh(&ping_table.lock);
 	if (sk_hashed(sk)) {
 		hlist_nulls_del(&sk->sk_nulls_node);
@@ -653,7 +653,7 @@ int ping_common_sendmsg(int family, struct msghdr *msg, size_t len,
 			void *user_icmph, size_t icmph_len) {
 	u8 type, code;
 
-	if (len > 0xFFFF || len < icmph_len)
+	if (len > 0xFFFF)
 		return -EMSGSIZE;
 
 	/*
@@ -785,7 +785,7 @@ int ping_v4_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	flowi4_init_output(&fl4, ipc.oif, sk->sk_mark, tos,
 			   RT_SCOPE_UNIVERSE, sk->sk_protocol,
 			   inet_sk_flowi_flags(sk), faddr, saddr, 0, 0,
-			   sock_i_uid(sk));
+			   sk->sk_uid);
 
 	security_sk_classify_flow(sk, flowi4_to_flowi(&fl4));
 	rt = ip_route_output_flow(net, &fl4, sk);
@@ -905,6 +905,9 @@ int ping_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			sin->sin_port = 0 /* skb->h.uh->source */;
 			sin->sin_addr.s_addr = ip_hdr(skb)->saddr;
 			memset(sin->sin_zero, 0, sizeof(sin->sin_zero));
+			if (addr_len) {
+				*addr_len = sizeof(*sin);
+			}
 		}
 
 		if (isk->cmsg_flags)
@@ -920,13 +923,15 @@ int ping_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			sin6->sin6_family = AF_INET6;
 			sin6->sin6_port = 0;
 			sin6->sin6_addr = ip6->saddr;
-
 			sin6->sin6_flowinfo = 0;
 			if (np->sndflow)
 				sin6->sin6_flowinfo = ip6_flowinfo(ip6);
-
-			sin6->sin6_scope_id = ipv6_iface_scope_id(&sin6->sin6_addr,
-							  IP6CB(skb)->iif);
+			sin6->sin6_scope_id =
+				ipv6_iface_scope_id(&sin6->sin6_addr,
+						    IP6CB(skb)->iif);
+			if (addr_len) {
+				*addr_len = sizeof(*sin6);
+			}
 		}
 
 		if (inet6_sk(sk)->rxopt.all)
@@ -1096,7 +1101,7 @@ static void ping_seq_stop(struct seq_file *seq, void *v)
 }
 
 static void ping_format_sock(struct sock *sp, struct seq_file *f,
-		int bucket)
+		int bucket, int *len)
 {
 	struct inet_sock *inet = inet_sk(sp);
 	__be32 dest = inet->inet_daddr;
@@ -1105,7 +1110,7 @@ static void ping_format_sock(struct sock *sp, struct seq_file *f,
 	__u16 srcp = ntohs(inet->inet_sport);
 
 	seq_printf(f, "%5d: %08X:%04X %08X:%04X"
-		" %02X %08X:%08X %02X:%08lX %08X %5d %8d %lu %d %pK %d",
+		" %02X %08X:%08X %02X:%08lX %08X %5d %8d %lu %d %pK %d%n",
 		bucket, src, srcp, dest, destp, sp->sk_state,
 		sk_wmem_alloc_get(sp),
 		sk_rmem_alloc_get(sp),
@@ -1113,22 +1118,23 @@ static void ping_format_sock(struct sock *sp, struct seq_file *f,
 		from_kuid_munged(seq_user_ns(f), sock_i_uid(sp)),
 		0, sock_i_ino(sp),
 		atomic_read(&sp->sk_refcnt), sp,
-		atomic_read(&sp->sk_drops));
+		atomic_read(&sp->sk_drops), len);
 }
 
 static int ping_seq_show(struct seq_file *seq, void *v)
 {
-	seq_setwidth(seq, 127);
 	if (v == SEQ_START_TOKEN)
-		seq_puts(seq, "  sl  local_address rem_address   st tx_queue "
+		seq_printf(seq, "%-127s\n",
+			   "  sl  local_address rem_address   st tx_queue "
 			   "rx_queue tr tm->when retrnsmt   uid  timeout "
 			   "inode ref pointer drops");
 	else {
 		struct ping_iter_state *state = seq->private;
+		int len;
 
-		ping_format_sock(v, seq, state->bucket);
+		ping_format_sock(v, seq, state->bucket, &len);
+		seq_printf(seq, "%*s\n", 127 - len, "");
 	}
-	seq_pad(seq, '\n');
 	return 0;
 }
 

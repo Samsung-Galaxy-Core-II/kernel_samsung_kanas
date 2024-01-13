@@ -426,7 +426,7 @@ static int unix_dgram_peer_wake_me(struct sock *sk, struct sock *other)
 	return 0;
 }
 
-static int unix_writable(const struct sock *sk)
+static inline int unix_writable(struct sock *sk)
 {
 	return (atomic_read(&sk->sk_wmem_alloc) << 2) <= sk->sk_sndbuf;
 }
@@ -477,7 +477,7 @@ static void unix_sock_destructor(struct sock *sk)
 	WARN_ON(!sk_unhashed(sk));
 	WARN_ON(sk->sk_socket);
 	if (!sock_flag(sk, SOCK_DEAD)) {
-		WARN(1, "Attempt to release alive unix socket: %p\n", sk);
+		printk(KERN_INFO "Attempt to release alive unix socket: %p\n", sk);
 		return;
 	}
 
@@ -1327,7 +1327,7 @@ restart:
 	sk->sk_state	= TCP_ESTABLISHED;
 	sock_hold(newsk);
 
-	smp_mb__after_atomic();	/* sock_hold() does an atomic_inc() */
+	smp_mb__after_atomic_inc();	/* sock_hold() does an atomic_inc() */
 	unix_peer(sk)	= newsk;
 
 	unix_state_unlock(sk);

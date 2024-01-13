@@ -420,9 +420,8 @@ int ip6_forward(struct sk_buff *skb)
 	}
 
 	/* XXX: idev->cnf.proxy_ndp? */
-	if ((net->ipv6.devconf_all->proxy_ndp == 1 &&
-	    pneigh_lookup(&nd_tbl, net, &hdr->daddr, skb->dev, 0))
-	    || net->ipv6.devconf_all->proxy_ndp >= 2) {
+	if (net->ipv6.devconf_all->proxy_ndp &&
+	    pneigh_lookup(&nd_tbl, net, &hdr->daddr, skb->dev, 0)) {
 		int proxied = ip6_forward_proxy_check(skb);
 		if (proxied > 0)
 			return ip6_input(skb);
@@ -1221,14 +1220,16 @@ int ip6_append_data(struct sock *sk, int getfrag(void *from, char *to,
 		np->cork.tclass = tclass;
 		if (rt->dst.flags & DST_XFRM_TUNNEL)
 			mtu = np->pmtudisc == IPV6_PMTUDISC_PROBE ?
-			      rt->dst.dev->mtu : dst_mtu(&rt->dst);
+			      ACCESS_ONCE(rt->dst.dev->mtu) : dst_mtu(&rt->dst);
 		else
 			mtu = np->pmtudisc == IPV6_PMTUDISC_PROBE ?
-			      rt->dst.dev->mtu : dst_mtu(rt->dst.path);
+			      ACCESS_ONCE(rt->dst.dev->mtu) : dst_mtu(rt->dst.path);
 		if (np->frag_size < mtu) {
 			if (np->frag_size)
 				mtu = np->frag_size;
 		}
+		if (mtu < IPV6_MIN_MTU)
+			return -EINVAL;
 		cork->fragsize = mtu;
 		if (dst_allfrag(rt->dst.path))
 			cork->flags |= IPCORK_ALLFRAG;
@@ -1391,20 +1392,8 @@ alloc_new_skb:
 			/*
 			 *	Fill in the control structures
 			 */
-
-			/* offload UDP checksum in case the packet is not
-			 * a fragment (length <= mtu && transhdrlen) and the
-			 * device supports it in its features.
-			 */
-			if ((rt->dst.dev->features &
-				NETIF_F_IPV6_UDP_CSUM) &&
-				(length <= mtu) && transhdrlen &&
-				(sk->sk_protocol == IPPROTO_UDP)) {
-				skb->ip_summed = CHECKSUM_PARTIAL;
-			} else {
-				skb->ip_summed = CHECKSUM_NONE;
-				skb->csum = 0;
-			}
+			skb->ip_summed = CHECKSUM_NONE;
+			skb->csum = 0;
 			/* reserve for fragmentation and ipsec header */
 			skb_reserve(skb, hh_len + sizeof(struct frag_hdr) +
 				    dst_exthdrlen);
