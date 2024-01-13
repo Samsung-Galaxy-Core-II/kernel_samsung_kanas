@@ -611,27 +611,25 @@ static inline void __ftrace_enabled_restore(int enabled)
 #endif
 }
 
-/* All archs should have this, but we define it for consistency */
-#ifndef ftrace_return_address0
-# define ftrace_return_address0 __builtin_return_address(0)
-#endif
-
-/* Archs may use other ways for ADDR1 and beyond */
-#ifndef ftrace_return_address
+#ifndef HAVE_ARCH_CALLER_ADDR
 # ifdef CONFIG_FRAME_POINTER
-#  define ftrace_return_address(n) __builtin_return_address(n)
+#  define CALLER_ADDR0 ((unsigned long)__builtin_return_address(0))
+#  define CALLER_ADDR1 ((unsigned long)__builtin_return_address(1))
+#  define CALLER_ADDR2 ((unsigned long)__builtin_return_address(2))
+#  define CALLER_ADDR3 ((unsigned long)__builtin_return_address(3))
+#  define CALLER_ADDR4 ((unsigned long)__builtin_return_address(4))
+#  define CALLER_ADDR5 ((unsigned long)__builtin_return_address(5))
+#  define CALLER_ADDR6 ((unsigned long)__builtin_return_address(6))
 # else
-#  define ftrace_return_address(n) 0UL
+#  define CALLER_ADDR0 ((unsigned long)__builtin_return_address(0))
+#  define CALLER_ADDR1 0UL
+#  define CALLER_ADDR2 0UL
+#  define CALLER_ADDR3 0UL
+#  define CALLER_ADDR4 0UL
+#  define CALLER_ADDR5 0UL
+#  define CALLER_ADDR6 0UL
 # endif
-#endif
-
-#define CALLER_ADDR0 ((unsigned long)ftrace_return_address0)
-#define CALLER_ADDR1 ((unsigned long)ftrace_return_address(1))
-#define CALLER_ADDR2 ((unsigned long)ftrace_return_address(2))
-#define CALLER_ADDR3 ((unsigned long)ftrace_return_address(3))
-#define CALLER_ADDR4 ((unsigned long)ftrace_return_address(4))
-#define CALLER_ADDR5 ((unsigned long)ftrace_return_address(5))
-#define CALLER_ADDR6 ((unsigned long)ftrace_return_address(6))
+#endif /* ifndef HAVE_ARCH_CALLER_ADDR */
 
 #ifdef CONFIG_IRQSOFF_TRACER
   extern void time_hardirqs_on(unsigned long a0, unsigned long a1);
@@ -729,6 +727,7 @@ ftrace_push_return_trace(unsigned long ret, unsigned long func, int *depth,
 extern char __irqentry_text_start[];
 extern char __irqentry_text_end[];
 
+#define FTRACE_NOTRACE_DEPTH 65536
 #define FTRACE_RETFUNC_DEPTH 50
 #define FTRACE_RETSTACK_ALLOC_SIZE 32
 extern int register_ftrace_graph(trace_func_graph_ret_t retfunc,

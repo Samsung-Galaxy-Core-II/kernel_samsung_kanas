@@ -221,16 +221,7 @@ extern struct page *__page_cache_alloc(gfp_t gfp);
 #else
 static inline struct page *__page_cache_alloc(gfp_t gfp)
 {
-	struct page *page;
-
-	page = alloc_pages(gfp, 0);
-
-	if (page && is_cma_pageblock(page)) {
-		__free_page(page);
-		page = alloc_pages(gfp & ~__GFP_MOVABLE, 0);
-	}
-
-	return page;
+	return alloc_pages(gfp, 0);
 }
 #endif
 
@@ -252,10 +243,20 @@ static inline struct page *page_cache_alloc_readahead(struct address_space *x)
 
 typedef int filler_t(void *, struct page *);
 
-extern struct page * find_get_page(struct address_space *mapping,
-				pgoff_t index);
 pgoff_t page_cache_next_hole(struct address_space *mapping,
                              pgoff_t index, unsigned long max_scan);
+
+extern struct page * find_get_page_flags(struct address_space *mapping,
+					 pgoff_t index, int fgp_flags);
+
+#define FGP_ACCESSED		0x00000001
+
+static inline struct page* find_get_page(struct address_space *mapping,
+					 pgoff_t index)
+{
+	return find_get_page_flags(mapping, index, 0);
+}
+
 
 extern struct page * find_lock_page(struct address_space *mapping,
 				pgoff_t index);
@@ -427,6 +428,8 @@ static inline void wait_on_page_writeback(struct page *page)
 
 extern void end_page_writeback(struct page *page);
 void wait_for_stable_page(struct page *page);
+
+void page_endio(struct page *page, int rw, int err);
 
 /*
  * Add an arbitrary waiter to a page's wait queue

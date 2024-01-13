@@ -16,8 +16,6 @@ struct vm_area_struct;		/* vma defining user mapping in mm_types.h */
 #define VM_USERMAP	0x00000008	/* suitable for remap_vmalloc_range */
 #define VM_VPAGES	0x00000010	/* buffer for pages was vmalloc'ed */
 #define VM_UNLIST	0x00000020	/* vm_struct is not listed in vmlist */
-#define VM_LOWMEM	0x00000040	/* Tracking of direct mapped lowmem */
-#define VM_KASAN		0x00000080      /* has allocated kasan shadow memory */
 /* bits [20..32] reserved for arch specific ioremap internals */
 
 /*
@@ -77,9 +75,7 @@ extern void *vmalloc_32_user(unsigned long size);
 extern void *__vmalloc(unsigned long size, gfp_t gfp_mask, pgprot_t prot);
 extern void *__vmalloc_node_range(unsigned long size, unsigned long align,
 			unsigned long start, unsigned long end, gfp_t gfp_mask,
-			pgprot_t prot, unsigned long vm_flags, int node,
-			const void *caller);
-
+			pgprot_t prot, int node, const void *caller);
 extern void vfree(const void *addr);
 
 extern void *vmap(struct page **pages, unsigned int count,
@@ -150,13 +146,6 @@ extern long vwrite(char *buf, char *addr, unsigned long count);
 extern struct list_head vmap_area_list;
 extern __init void vm_area_add_early(struct vm_struct *vm);
 extern __init void vm_area_register_early(struct vm_struct *vm, size_t align);
-extern __init int vm_area_check_early(struct vm_struct *vm);
-#ifdef CONFIG_ENABLE_VMALLOC_SAVING
-extern void mark_vmalloc_reserved_area(void *addr, unsigned long size);
-#else
-static inline void mark_vmalloc_reserved_area(void *addr, unsigned long size)
-{ };
-#endif
 
 #ifdef CONFIG_SMP
 # ifdef CONFIG_MMU
@@ -187,12 +176,7 @@ struct vmalloc_info {
 };
 
 #ifdef CONFIG_MMU
-#ifdef CONFIG_ENABLE_VMALLOC_SAVING
-extern unsigned long total_vmalloc_size;
-#define VMALLOC_TOTAL total_vmalloc_size
-#else
 #define VMALLOC_TOTAL (VMALLOC_END - VMALLOC_START)
-#endif
 extern void get_vmalloc_info(struct vmalloc_info *vmi);
 #else
 

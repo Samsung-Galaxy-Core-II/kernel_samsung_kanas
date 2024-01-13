@@ -18,7 +18,6 @@
 #include <linux/device.h>
 #include <linux/notifier.h>
 #include <linux/regulator/consumer.h>
-#include <linux/regulator/proxy-consumer.h>
 
 struct regmap;
 struct regulator_dev;
@@ -60,10 +59,6 @@ enum regulator_status {
  *	if the selector indicates a voltage that is unusable on this system;
  *	or negative errno.  Selectors range from zero to one less than
  *	regulator_desc.n_voltages.  Voltages may be reported in any order.
- * @list_corner_voltage: Return the maximum voltage in microvolts that
- *	that can be physically configured for the regulator when operating at
- *	the specified voltage corner or a negative errno if the corner value
- *	can't be used on this system.
  *
  * @set_current_limit: Configure a limit for a current-limited regulator.
  *                     The driver should select the current closest to max_uA.
@@ -104,7 +99,6 @@ struct regulator_ops {
 
 	/* enumerate supported voltages */
 	int (*list_voltage) (struct regulator_dev *, unsigned selector);
-	int (*list_corner_voltage)(struct regulator_dev *, int corner);
 
 	/* get/set regulator voltage */
 	int (*set_voltage) (struct regulator_dev *, int min_uV, int max_uV,
@@ -314,8 +308,6 @@ struct regulator_dev {
 
 	struct regulator_enable_gpio *ena_pin;
 	unsigned int ena_gpio_state:1;
-	struct proxy_consumer *proxy_consumer;
-	struct regulator *debug_consumer;
 };
 
 struct regulator_dev *

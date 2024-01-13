@@ -26,23 +26,9 @@ struct cpu {
 	struct device dev;
 };
 
-struct cpu_pstate_pwr {
-	unsigned int freq;
-	uint32_t power;
-};
-
-struct cpu_pwr_stats {
-	int cpu;
-	long temp;
-	bool throttling;
-	struct cpu_pstate_pwr *ptable;
-	int len;
-};
-
 extern int register_cpu(struct cpu *cpu, int num);
 extern struct device *get_cpu_device(unsigned cpu);
 extern bool cpu_is_hotpluggable(unsigned cpu);
-extern bool arch_match_cpu_phys_id(int cpu, u64 phys_id);
 
 extern int cpu_add_dev_attr(struct device_attribute *attr);
 extern void cpu_remove_dev_attr(struct device_attribute *attr);
@@ -135,18 +121,19 @@ enum {
 }
 
 #define __cpu_notifier(fn, pri) {				\
-	static struct notifier_block fn##_nb __cpuinitdata =	\
+	static struct notifier_block fn##_nb =			\
 		{ .notifier_call = fn, .priority = pri };	\
 	__register_cpu_notifier(&fn##_nb);			\
 }
+
+
 extern int register_cpu_notifier(struct notifier_block *nb);
 extern int __register_cpu_notifier(struct notifier_block *nb);
 extern void unregister_cpu_notifier(struct notifier_block *nb);
 extern void __unregister_cpu_notifier(struct notifier_block *nb);
 
 #else /* #if defined(CONFIG_HOTPLUG_CPU) || !defined(MODULE) */
-#define cpu_notifier(fn, pri)    do { (void)(fn); } while (0)
-#define __cpu_notifier(fn, pri)    do { (void)(fn); } while (0)
+#define cpu_notifier(fn, pri)	do { (void)(fn); } while (0)
 
 static inline int register_cpu_notifier(struct notifier_block *nb)
 {
@@ -269,9 +256,6 @@ static inline int disable_nonboot_cpus(void) { return 0; }
 static inline void enable_nonboot_cpus(void) {}
 #endif /* !CONFIG_PM_SLEEP_SMP */
 
-struct cpu_pwr_stats *get_cpu_pwr_stats(void);
-void trigger_cpu_pwr_stats_calc(void);
-
 enum cpuhp_state {
 	CPUHP_OFFLINE,
 	CPUHP_ONLINE,
@@ -281,7 +265,6 @@ void cpu_startup_entry(enum cpuhp_state state);
 void cpu_idle(void);
 
 void cpu_idle_poll_ctrl(bool enable);
-void per_cpu_idle_poll_ctrl(int cpu, bool enable);
 
 void arch_cpu_idle(void);
 void arch_cpu_idle_prepare(void);

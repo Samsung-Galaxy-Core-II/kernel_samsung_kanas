@@ -84,7 +84,8 @@
  *	processing.  <cp> is a pointer to the buffer of input
  *	character received by the device.  <fp> is a pointer to a
  *	pointer of flag bytes which indicate whether a character was
- *	received with a parity error, etc.
+ *	received with a parity error, etc. <fp> may be NULL to indicate
+ *	all data received is TTY_NORMAL.
  *
  * void	(*write_wakeup)(struct tty_struct *);
  *
@@ -100,10 +101,27 @@
  *	seek to perform this action quickly but should wait until
  *	any pending driver I/O is completed.
  *
+ * void (*fasync)(struct tty_struct *, int on)
+ *
+ *	Notify line discipline when signal-driven I/O is enabled or
+ *	disabled.
+ *
  * void (*dcd_change)(struct tty_struct *tty, unsigned int status)
  *
  *	Tells the discipline that the DCD pin has changed its status.
  *	Used exclusively by the N_PPS (Pulse-Per-Second) line discipline.
+ *
+ * int	(*receive_buf2)(struct tty_struct *, const unsigned char *cp,
+ *			char *fp, int count);
+ *
+ *	This function is called by the low-level tty driver to send
+ *	characters received by the hardware to the line discpline for
+ *	processing.  <cp> is a pointer to the buffer of input
+ *	character received by the device.  <fp> is a pointer to a
+ *	pointer of flag bytes which indicate whether a character was
+ *	received with a parity error, etc. <fp> may be NULL to indicate
+ *	all data received is TTY_NORMAL.
+ *	If assigned, prefer this function for automatic flow control.
  */
 
 #include <linux/fs.h>
@@ -189,6 +207,9 @@ struct tty_ldisc_ops {
 			       char *fp, int count);
 	void	(*write_wakeup)(struct tty_struct *);
 	void	(*dcd_change)(struct tty_struct *, unsigned int);
+	void	(*fasync)(struct tty_struct *tty, int on);
+	int	(*receive_buf2)(struct tty_struct *, const unsigned char *cp,
+				char *fp, int count);
 
 	struct  module *owner;
 

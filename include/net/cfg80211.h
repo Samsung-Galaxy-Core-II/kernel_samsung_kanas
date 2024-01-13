@@ -61,14 +61,6 @@
 
 struct wiphy;
 
-#define TDLS_MGMT_VERSION2 1
-#define CFG80211_DEL_STA_V2 1
-#define CFG80211_BSSID_HINT_BACKPORT 1
-#define CFG80211_SCAN_BSSID 1
-#define CFG80211_CONNECT_PREV_BSSID 1
-#define CFG80211_CONNECT_BSS 1
-#define CFG80211_ABORT_SCAN 1
-
 /*
  * wireless hardware capability structures
  */
@@ -118,13 +110,6 @@ enum ieee80211_band {
  *	channel as the control or any of the secondary channels.
  *	This may be due to the driver or due to regulatory bandwidth
  *	restrictions.
- * @IEEE80211_CHAN_INDOOR_ONLY: see %NL80211_FREQUENCY_ATTR_INDOOR_ONLY
- * @IEEE80211_CHAN_GO_CONCURRENT: see %NL80211_FREQUENCY_ATTR_GO_CONCURRENT
- * @IEEE80211_CHAN_NO_20MHZ: 20 MHz bandwidth is not permitted
- *	on this channel.
- * @IEEE80211_CHAN_NO_10MHZ: 10 MHz bandwidth is not permitted
- *	on this channel.
- *
  */
 enum ieee80211_channel_flags {
 	IEEE80211_CHAN_DISABLED		= 1<<0,
@@ -136,10 +121,6 @@ enum ieee80211_channel_flags {
 	IEEE80211_CHAN_NO_OFDM		= 1<<6,
 	IEEE80211_CHAN_NO_80MHZ		= 1<<7,
 	IEEE80211_CHAN_NO_160MHZ	= 1<<8,
-	IEEE80211_CHAN_INDOOR_ONLY	= 1<<9,
-	IEEE80211_CHAN_GO_CONCURRENT	= 1<<10,
-	IEEE80211_CHAN_NO_20MHZ		= 1<<11,
-	IEEE80211_CHAN_NO_10MHZ		= 1<<12,
 };
 
 #define IEEE80211_CHAN_NO_HT40 \
@@ -675,10 +656,6 @@ enum station_parameters_apply_mask {
  * @capability: station capability
  * @ext_capab: extended capabilities of the station
  * @ext_capab_len: number of extended capabilities
- * @supported_channels: supported channels in IEEE 802.11 format
- * @supported_channels_len: number of supported channels
- * @supported_oper_classes: supported oper classes in IEEE 802.11 format
- * @supported_oper_classes_len: number of supported operating classes
  */
 struct station_parameters {
 	const u8 *supported_rates;
@@ -698,26 +675,6 @@ struct station_parameters {
 	u16 capability;
 	const u8 *ext_capab;
 	u8 ext_capab_len;
-	const u8 *supported_channels;
-	u8 supported_channels_len;
-	const u8 *supported_oper_classes;
-	u8 supported_oper_classes_len;
-};
-
-/**
- * struct station_del_parameters - station deletion parameters
- *
- * Used to delete a station entry (or all stations).
- *
- * @mac: MAC address of the station to remove or NULL to remove all stations
- * @subtype: Management frame subtype to use for indicating removal
- *	(10 = Disassociation, 12 = Deauthentication)
- * @reason_code: Reason code for the Disassociation/Deauthentication frame
- */
-struct station_del_parameters {
-	const u8 *mac;
-	u8 subtype;
-	u16 reason_code;
 };
 
 /**
@@ -1285,7 +1242,6 @@ struct cfg80211_ssid {
  * @wdev: the wireless device to scan for
  * @aborted: (internal) scan request was notified as aborted
  * @no_cck: used to send probe requests at non CCK rate in 2GHz band
- * @bssid: BSSID to scan for (most commonly, the wildcard BSSID)
  */
 struct cfg80211_scan_request {
 	struct cfg80211_ssid *ssids;
@@ -1298,8 +1254,6 @@ struct cfg80211_scan_request {
 	u32 rates[IEEE80211_NUM_BANDS];
 
 	struct wireless_dev *wdev;
-
-	u8 bssid[ETH_ALEN] __aligned(2);
 
 	/* internal */
 	struct wiphy *wiphy;
@@ -1343,6 +1297,8 @@ struct cfg80211_match_set {
  * @channels: channels to scan
  * @min_rssi_thold: for drivers only supporting a single threshold, this
  *	contains the minimum over all matchsets
+ * @owner_nlportid: netlink portid of owner (if this should is a request
+ *	owned by a particular socket)
  */
 struct cfg80211_sched_scan_request {
 	struct cfg80211_ssid *ssids;
@@ -1361,6 +1317,7 @@ struct cfg80211_sched_scan_request {
 	struct wiphy *wiphy;
 	struct net_device *dev;
 	unsigned long scan_start;
+	u32 owner_nlportid;
 
 	/* keep last */
 	struct ieee80211_channel *channels[0];
@@ -1384,14 +1341,12 @@ enum cfg80211_signal_type {
  * @tsf: TSF contained in the frame that carried these IEs
  * @rcu_head: internal use, for freeing
  * @len: length of the IEs
- * @from_beacon: these IEs are known to come from a beacon
  * @data: IE data
  */
 struct cfg80211_bss_ies {
 	u64 tsf;
 	struct rcu_head rcu_head;
 	int len;
-	bool from_beacon;
 	u8 data[];
 };
 
@@ -1614,14 +1569,8 @@ struct cfg80211_ibss_params {
  *
  * @channel: The channel to use or %NULL if not specified (auto-select based
  *	on scan results)
- * @channel_hint: The channel of the recommended BSS for initial connection or
- *	%NULL if not specified
  * @bssid: The AP BSSID or %NULL if not specified (auto-select based on scan
  *	results)
- * @bssid_hint: The recommended AP BSSID for initial connection to the BSS or
- *	%NULL if not specified. Unlike the @bssid parameter, the driver is
- *	allowed to ignore this @bssid_hint if it has knowledge of a better BSS
- *	to use.
  * @ssid: SSID
  * @ssid_len: Length of ssid in octets
  * @auth_type: Authentication type (algorithm)
@@ -1641,13 +1590,10 @@ struct cfg80211_ibss_params {
  * @ht_capa_mask:  The bits of ht_capa which are to be used.
  * @vht_capa:  VHT Capability overrides
  * @vht_capa_mask: The bits of vht_capa which are to be used.
- * @prev_bssid: previous BSSID, if not %NULL use reassociate frame
  */
 struct cfg80211_connect_params {
 	struct ieee80211_channel *channel;
-	struct ieee80211_channel *channel_hint;
 	u8 *bssid;
-	const u8 *bssid_hint;
 	u8 *ssid;
 	size_t ssid_len;
 	enum nl80211_auth_type auth_type;
@@ -1664,7 +1610,6 @@ struct cfg80211_connect_params {
 	struct ieee80211_ht_cap ht_capa_mask;
 	struct ieee80211_vht_cap vht_capa;
 	struct ieee80211_vht_cap vht_capa_mask;
-	const u8 *prev_bssid;
 };
 
 /**
@@ -1842,50 +1787,6 @@ struct cfg80211_update_ft_ies_params {
 };
 
 /**
- * struct cfg80211_dscp_exception - DSCP exception
- *
- * @dscp: DSCP value that does not adhere to the user priority range definition
- * @up: user priority value to which the corresponding DSCP value belongs
- */
-struct cfg80211_dscp_exception {
-	u8 dscp;
-	u8 up;
-};
-
-/**
- * struct cfg80211_dscp_range - DSCP range definition for user priority
- *
- * @low: lowest DSCP value of this user priority range, inclusive
- * @high: highest DSCP value of this user priority range, inclusive
- */
-struct cfg80211_dscp_range {
-	u8 low;
-	u8 high;
-};
-
-/* QoS Map Set element length defined in IEEE Std 802.11-2012, 8.4.2.97 */
-#define IEEE80211_QOS_MAP_MAX_EX	21
-#define IEEE80211_QOS_MAP_LEN_MIN	16
-#define IEEE80211_QOS_MAP_LEN_MAX \
-	(IEEE80211_QOS_MAP_LEN_MIN + 2 * IEEE80211_QOS_MAP_MAX_EX)
-
-/**
- * struct cfg80211_qos_map - QoS Map Information
- *
- * This struct defines the Interworking QoS map setting for DSCP values
- *
- * @num_des: number of DSCP exceptions (0..21)
- * @dscp_exception: optionally up to maximum of 21 DSCP exceptions from
- *	the user priority DSCP range definition
- * @up: DSCP range definition for a particular user priority
- */
-struct cfg80211_qos_map {
-	u8 num_des;
-	struct cfg80211_dscp_exception dscp_exception[IEEE80211_QOS_MAP_MAX_EX];
-	struct cfg80211_dscp_range up[8];
-};
-
-/**
  * struct cfg80211_ops - backend description for wireless configuration
  *
  * This struct is registered by fullmac card drivers and/or wireless stacks
@@ -1941,7 +1842,7 @@ struct cfg80211_qos_map {
  * @stop_ap: Stop being an AP, including stopping beaconing.
  *
  * @add_station: Add a new station.
- * @del_station: Remove a station
+ * @del_station: Remove a station; @mac may be NULL to remove all stations.
  * @change_station: Modify a given station. Note that flags changes are not much
  *	validated in cfg80211, in particular the auth/assoc/authorized flags
  *	might come to the driver in invalid combinations -- make sure to check
@@ -1981,8 +1882,6 @@ struct cfg80211_qos_map {
  *	the driver, and will be valid until passed to cfg80211_scan_done().
  *	For scan results, call cfg80211_inform_bss(); you can call this outside
  *	the scan/scan_done bracket too.
- * @abort_scan: Tell the driver to abort an ongoing scan. The driver shall
- *	indicate the status of the scan through cfg80211_scan_done().
  *
  * @auth: Request to authenticate with the specified peer
  * @assoc: Request to (re)associate with the specified peer
@@ -2116,12 +2015,6 @@ struct cfg80211_qos_map {
  *	driver can take the most appropriate actions.
  * @crit_proto_stop: Indicates critical protocol no longer needs increased link
  *	reliability. This operation can not fail.
- *
- * @set_qos_map: Set QoS mapping information to the driver
- *
- * @set_ap_chanwidth: Set the AP (including P2P GO) mode channel width for the
- *	given interface This is used e.g. for dynamic HT 20/40 MHz channel width
- *	changes during the lifetime of the BSS.
  */
 struct cfg80211_ops {
 	int	(*suspend)(struct wiphy *wiphy, struct cfg80211_wowlan *wow);
@@ -2166,7 +2059,7 @@ struct cfg80211_ops {
 	int	(*add_station)(struct wiphy *wiphy, struct net_device *dev,
 			       u8 *mac, struct station_parameters *params);
 	int	(*del_station)(struct wiphy *wiphy, struct net_device *dev,
-			       struct station_del_parameters *params);
+			       u8 *mac);
 	int	(*change_station)(struct wiphy *wiphy, struct net_device *dev,
 				  u8 *mac, struct station_parameters *params);
 	int	(*get_station)(struct wiphy *wiphy, struct net_device *dev,
@@ -2212,7 +2105,6 @@ struct cfg80211_ops {
 
 	int	(*scan)(struct wiphy *wiphy,
 			struct cfg80211_scan_request *request);
-	void	(*abort_scan)(struct wiphy *wiphy, struct wireless_dev *wdev);
 
 	int	(*auth)(struct wiphy *wiphy, struct net_device *dev,
 			struct cfg80211_auth_request *req);
@@ -2317,8 +2209,7 @@ struct cfg80211_ops {
 
 	int	(*tdls_mgmt)(struct wiphy *wiphy, struct net_device *dev,
 			     u8 *peer, u8 action_code,  u8 dialog_token,
-			     u16 status_code, u32 peer_capability,
-			     const u8 *buf, size_t len);
+			     u16 status_code, const u8 *buf, size_t len);
 	int	(*tdls_oper)(struct wiphy *wiphy, struct net_device *dev,
 			     u8 *peer, enum nl80211_tdls_operation oper);
 
@@ -2359,13 +2250,6 @@ struct cfg80211_ops {
 				    u16 duration);
 	void	(*crit_proto_stop)(struct wiphy *wiphy,
 				   struct wireless_dev *wdev);
-
-	int     (*set_qos_map)(struct wiphy *wiphy,
-			       struct net_device *dev,
-			       struct cfg80211_qos_map *qos_map);
-
-	int	(*set_ap_chanwidth)(struct wiphy *wiphy, struct net_device *dev,
-				    struct cfg80211_chan_def *chandef);
 };
 
 /*
@@ -2436,8 +2320,6 @@ struct cfg80211_ops {
  *	responds to probe-requests in hardware.
  * @WIPHY_FLAG_OFFCHAN_TX: Device supports direct off-channel TX.
  * @WIPHY_FLAG_HAS_REMAIN_ON_CHANNEL: Device supports remain-on-channel call.
- * @WIPHY_FLAG_SUPPORTS_5_10_MHZ: Device supports 5 MHz and 10 MHz channels.
- * @WIPHY_FLAG_DFS_OFFLOAD: The driver handles all the DFS related operations.
  */
 enum wiphy_flags {
 	WIPHY_FLAG_CUSTOM_REGULATORY		= BIT(0),
@@ -2461,8 +2343,6 @@ enum wiphy_flags {
 	WIPHY_FLAG_AP_PROBE_RESP_OFFLOAD	= BIT(19),
 	WIPHY_FLAG_OFFCHAN_TX			= BIT(20),
 	WIPHY_FLAG_HAS_REMAIN_ON_CHANNEL	= BIT(21),
-	WIPHY_FLAG_SUPPORTS_5_10_MHZ		= BIT(22),
-	WIPHY_FLAG_DFS_OFFLOAD                  = BIT(24)
 };
 
 /**
@@ -2740,11 +2620,6 @@ struct wiphy_vendor_command {
  * @n_vendor_commands: number of vendor commands
  * @vendor_events: array of vendor events supported by the hardware
  * @n_vendor_events: number of vendor events
- *
- * @max_ap_assoc_sta: maximum number of associated stations supported in AP mode
- *	(including P2P GO) or 0 to indicate no such limit is advertised. The
- *	driver is allowed to advertise a theoretical limit that it can reach in
- *	some cases, but may not always reach.
  */
 struct wiphy {
 	/* assign these fields before you register the wiphy */
@@ -2858,8 +2733,6 @@ struct wiphy {
 	const struct wiphy_vendor_command *vendor_commands;
 	const struct nl80211_vendor_cmd_info *vendor_events;
 	int n_vendor_commands, n_vendor_events;
-
-	u16 max_ap_assoc_sta;
 
 	char priv[0] __aligned(NETDEV_ALIGN);
 };
@@ -3022,6 +2895,7 @@ struct cfg80211_cached_keys;
  * @p2p_started: true if this is a P2P Device that has been started
  * @cac_started: true if DFS channel availability check has been started
  * @cac_start_time: timestamp (jiffies) when the dfs state was entered.
+ * @owner_nlportid: (private) owner socket port ID
  */
 struct wireless_dev {
 	struct wiphy *wiphy;
@@ -3075,6 +2949,8 @@ struct wireless_dev {
 
 	bool cac_started;
 	unsigned long cac_start_time;
+
+	u32 owner_nlportid;
 
 #ifdef CONFIG_CFG80211_WEXT
 	/* wext data */
@@ -3336,11 +3212,9 @@ void ieee80211_amsdu_to_8023s(struct sk_buff *skb, struct sk_buff_head *list,
 /**
  * cfg80211_classify8021d - determine the 802.1p/1d tag for a data frame
  * @skb: the data frame
- * @qos_map: Interworking QoS mapping or %NULL if not in use
  * Return: The 802.1p/1d tag.
  */
-unsigned int cfg80211_classify8021d(struct sk_buff *skb,
-				    struct cfg80211_qos_map *qos_map);
+unsigned int cfg80211_classify8021d(struct sk_buff *skb);
 
 /**
  * cfg80211_find_ie - find information element in data
@@ -3410,32 +3284,6 @@ const u8 *cfg80211_find_vendor_ie(unsigned int oui, u8 oui_type,
  * Return: 0 on success. -ENOMEM.
  */
 extern int regulatory_hint(struct wiphy *wiphy, const char *alpha2);
-
-/**
- * regulatory_hint_user - hint to the wireless core a regulatory domain
- * which the driver has received from an application
- * @alpha2: the ISO/IEC 3166 alpha2 the driver claims its regulatory domain
- *	should be in. If @rd is set this should be NULL. Note that if you
- *	set this to NULL you should still set rd->alpha2 to some accepted
- *	alpha2.
- * @user_reg_hint_type: the type of user regulatory hint.
- *
- * Wireless drivers can use this function to hint to the wireless core
- * the current regulatory domain as specified by trusted applications,
- * it is the driver's responsibilty to estbalish which applications it
- * trusts.
- *
- * The wiphy should be registered to cfg80211 prior to this call.
- * For cfg80211 drivers this means you must first use wiphy_register(),
- * for mac80211 drivers you must first use ieee80211_register_hw().
- *
- * Drivers should check the return value, its possible you can get
- * an -ENOMEM or an -EINVAL.
- *
- * Return: 0 on success. -ENOMEM, -EINVAL.
- */
-int regulatory_hint_user(const char *alpha2,
-			 enum nl80211_user_reg_hint_type user_reg_hint_type);
 
 /**
  * wiphy_apply_custom_regulatory - apply a custom driver regulatory domain
@@ -4025,32 +3873,6 @@ static inline void cfg80211_testmode_event(struct sk_buff *skb, gfp_t gfp)
 #endif
 
 /**
- * cfg80211_connect_bss - notify cfg80211 of connection result
- *
- * @dev: network device
- * @bssid: the BSSID of the AP
- * @bss: entry of bss to which STA got connected to, can be obtained
- *	through cfg80211_get_bss (may be %NULL)
- * @req_ie: association request IEs (maybe be %NULL)
- * @req_ie_len: association request IEs length
- * @resp_ie: association response IEs (may be %NULL)
- * @resp_ie_len: assoc response IEs length
- * @status: status code, 0 for successful connection, use
- *      %WLAN_STATUS_UNSPECIFIED_FAILURE if your device cannot give you
- *      the real status code for failures.
- * @gfp: allocation flags
- *
- * It should be called by the underlying driver whenever connect() has
- * succeeded. This is similar to cfg80211_connect_result(), but with the
- * option of identifying the exact bss entry for the connection. Only one of
- * these functions should be called.
- */
-void cfg80211_connect_bss(struct net_device *dev, const u8 *bssid,
-			  struct cfg80211_bss *bss, const u8 *req_ie,
-			  size_t req_ie_len, const u8 *resp_ie,
-			  size_t resp_ie_len, u16 status, gfp_t gfp);
-
-/**
  * cfg80211_connect_result - notify cfg80211 of connection result
  *
  * @dev: network device
@@ -4067,15 +3889,10 @@ void cfg80211_connect_bss(struct net_device *dev, const u8 *bssid,
  * It should be called by the underlying driver whenever connect() has
  * succeeded.
  */
-static inline void
-cfg80211_connect_result(struct net_device *dev, const u8 *bssid,
-			const u8 *req_ie, size_t req_ie_len,
-			const u8 *resp_ie, size_t resp_ie_len,
-			u16 status, gfp_t gfp)
-{
-	cfg80211_connect_bss(dev, bssid, NULL, req_ie, req_ie_len, resp_ie,
-			     resp_ie_len, status, gfp);
-}
+void cfg80211_connect_result(struct net_device *dev, const u8 *bssid,
+			     const u8 *req_ie, size_t req_ie_len,
+			     const u8 *resp_ie, size_t resp_ie_len,
+			     u16 status, gfp_t gfp);
 
 /**
  * cfg80211_roamed - notify cfg80211 of roaming
@@ -4528,25 +4345,6 @@ void cfg80211_report_wowlan_wakeup(struct wireless_dev *wdev,
  * by .crit_proto_start() has expired.
  */
 void cfg80211_crit_proto_stopped(struct wireless_dev *wdev, gfp_t gfp);
-
-
-/**
- * cfg80211_ap_stopped - notify userspace that AP mode stopped
- * @netdev: network device
- * @gfp: context flags
- */
-void cfg80211_ap_stopped(struct net_device *netdev, gfp_t gfp);
-/**
- * cfg80211_is_gratuitous_arp_unsolicited_na - packet is grat. ARP/unsol. NA
- * @skb: the input packet, must be an ethernet frame already
- *
- * Return: %true if the packet is a gratuitous ARP or unsolicited NA packet.
- * This is used to drop packets that shouldn't occur because the AP implements
- * a proxy service.
- */
-bool cfg80211_is_gratuitous_arp_unsolicited_na(struct sk_buff *skb);
-
-void cfg80211_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *info);
 
 /* Logging, debugging and troubleshooting/diagnostic helpers. */
 
