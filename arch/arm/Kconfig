@@ -15,7 +15,6 @@ config ARM
 	select GENERIC_IRQ_PROBE
 	select GENERIC_IRQ_SHOW
 	select GENERIC_PCI_IOMAP
-	select GENERIC_SCHED_CLOCK
 	select GENERIC_SMP_IDLE_THREAD
 	select GENERIC_IDLE_POLL_SETUP
 	select GENERIC_STRNCPY_FROM_USER
@@ -28,7 +27,6 @@ config ARM
 	select HAVE_ARCH_TRACEHOOK
 	select HAVE_BPF_JIT
 	select HAVE_C_RECORDMCOUNT
-	select HAVE_CC_STACKPROTECTOR
 	select HAVE_DEBUG_KMEMLEAK
 	select HAVE_DMA_API_DEBUG
 	select HAVE_DMA_ATTRS
@@ -38,10 +36,12 @@ config ARM
 	select HAVE_FUNCTION_GRAPH_TRACER if (!THUMB2_KERNEL)
 	select HAVE_FUNCTION_TRACER if (!XIP_KERNEL)
 	select HAVE_GENERIC_DMA_COHERENT
+	select HAVE_GENERIC_HARDIRQS
 	select HAVE_HW_BREAKPOINT if (PERF_EVENTS && (CPU_V6 || CPU_V6K || CPU_V7))
 	select HAVE_IDE if PCI || ISA || PCMCIA
 	select HAVE_IRQ_TIME_ACCOUNTING
 	select HAVE_KERNEL_GZIP
+	select HAVE_KERNEL_LZ4
 	select HAVE_KERNEL_LZMA
 	select HAVE_KERNEL_LZO
 	select HAVE_KERNEL_XZ
@@ -119,7 +119,7 @@ config HAVE_TCM
 config HAVE_PROC_CPU
 	bool
 
-config NO_IOPORT_MAP
+config NO_IOPORT
 	bool
 
 config EISA
@@ -209,9 +209,6 @@ config NEED_RET_TO_USER
 config ARCH_MTD_XIP
 	bool
 
-config ARCH_WANT_KMAP_ATOMIC_FLUSH
-	bool
-
 config VECTORS_BASE
 	hex
 	default 0xffff0000 if MMU || CPU_HIGH_VECTOR
@@ -270,24 +267,6 @@ config PHYS_OFFSET
 config GENERIC_BUG
 	def_bool y
 	depends on BUG
-
-config ARM_USER_ACCESSIBLE_TIMER_BASE
-	hex "Base address of user-accessible timer counter page"
-	default 0xfffef000
-	depends on ARM_USE_USER_ACCESSIBLE_TIMERS
-	help
-	 Specify the base user-space virtual address where the user-accessible
-	 timer counter page should be mapped by the kernel.  User-space apps
-	 will read directly from the page at this address.
-
-config ARCH_RANDOM
-	bool "SOC specific random number generation"
-	help
-	 Allow the kernel to use an architecture specific implementation for
-	 random number generation
-
-	 If unsure, say N
-
 
 source "init/Kconfig"
 
@@ -423,7 +402,7 @@ config ARCH_EBSA110
 	select ISA
 	select NEED_MACH_IO_H
 	select NEED_MACH_MEMORY_H
-	select NO_IOPORT_MAP
+	select NO_IOPORT
 	help
 	  This is an evaluation board for the StrongARM processor available
 	  from Digital. It has limited hardware on-board, including an
@@ -653,23 +632,10 @@ config ARCH_PXA
 
 config ARCH_MSM
 	bool "Qualcomm MSM"
-	select ARCH_HAS_CPUFREQ
 	select ARCH_REQUIRE_GPIOLIB
 	select CLKDEV_LOOKUP
 	select GENERIC_CLOCKEVENTS
-	select GENERIC_GPIO
-	select GENERIC_TIME
-	select GENERIC_ALLOCATOR
 	select HAVE_CLK
-	select HAVE_CLK_PREPARE
-	select ARCH_HAS_OPP
-	select NEED_MACH_MEMORY_H
-	select NEED_MACH_IO_H
-	select NEED_MACH_GPIO_H
-	select SOC_BUS
-	select MULTI_IRQ_HANDLER
-	select SPARSE_IRQ
-	select USE_OF
 	help
 	  Support for Qualcomm MSM/QSD based systems.  This runs on the
 	  apps processor of the MSM/QSD and depends on a shared memory
@@ -689,7 +655,7 @@ config ARCH_SHMOBILE
 	select MIGHT_HAVE_CACHE_L2X0
 	select MULTI_IRQ_HANDLER
 	select NEED_MACH_MEMORY_H
-	select NO_IOPORT_MAP
+	select NO_IOPORT
 	select PINCTRL if ARCH_WANT_OPTIONAL_GPIOLIB
 	select PM_GENERIC_DOMAINS if PM
 	select SPARSE_IRQ
@@ -708,7 +674,7 @@ config ARCH_RPC
 	select ISA_DMA_API
 	select NEED_MACH_IO_H
 	select NEED_MACH_MEMORY_H
-	select NO_IOPORT_MAP
+	select NO_IOPORT
 	select VIRT_TO_BUS
 	help
 	  On the Acorn Risc-PC, Linux can support the internal IDE disk and
@@ -767,7 +733,7 @@ config ARCH_S3C64XX
 	select HAVE_S3C2410_WATCHDOG if WATCHDOG
 	select HAVE_TCM
 	select NEED_MACH_GPIO_H
-	select NO_IOPORT_MAP
+	select NO_IOPORT
 	select PLAT_SAMSUNG
 	select S3C_DEV_NAND
 	select S3C_GPIO_TRACK
@@ -908,6 +874,16 @@ config ARCH_OMAP1
 	select NEED_MACH_MEMORY_H
 	help
 	  Support for older TI OMAP1 (omap7xx, omap15xx or omap16xx)
+
+config ARCH_SC
+	bool "Spreadtrum SOC"
+	select ARCH_REQUIRE_GPIOLIB
+	select CLKDEV_LOOKUP
+	select GENERIC_CLOCKEVENTS
+	select NEED_MACH_GPIO_H
+	select HAVE_CLK
+	help
+	  Support for Spreadtrum sci based systems.
 
 endchoice
 
@@ -1072,6 +1048,10 @@ source "arch/arm/mach-vt8500/Kconfig"
 source "arch/arm/mach-w90x900/Kconfig"
 
 source "arch/arm/mach-zynq/Kconfig"
+
+source "arch/arm/mach-sc/Kconfig"
+
+source "arch/arm/hotplug/Kconfig"
 
 # Definitions to make life easier
 config ARCH_ACORN
@@ -1401,12 +1381,6 @@ config ARM_ERRATA_798181
 	  which sends an IPI to the CPUs that are running the same ASID
 	  as the one being invalidated.
 
-config PERFMAP
-        tristate "Perfmap support (EXPERIMENTAL)"
-	depends on ARCH_MSM_KRAIT
-        help
-          Perfmap: memory mapped interface for performance monitors.
-
 endmenu
 
 source "arch/arm/common/Kconfig"
@@ -1490,6 +1464,7 @@ config SMP
 	depends on GENERIC_CLOCKEVENTS
 	depends on HAVE_SMP
 	depends on MMU
+	select USE_GENERIC_SMP_HELPERS
 	help
 	  This enables support for systems with more than one CPU. If you have
 	  a system with only one CPU, like most personal computers, say N. If
@@ -1571,6 +1546,20 @@ config MCPM
 	  for (multi-)cluster based systems, such as big.LITTLE based
 	  systems.
 
+config USE_THIN_ARCHIVES
+	bool "Build the kernel using thin archives"
+	default n
+	select THIN_ARCHIVES
+	help
+	  Build the kernel using thin archives. Requires binutils 2.20 or newer.
+	  If you're unsure say N.
+
+config ARCH_SUPPORTS_LTO
+	bool "LTO supported?"
+	default n
+	help
+	  nothing.
+
 choice
 	prompt "Memory split"
 	default VMSPLIT_3G
@@ -1646,13 +1635,50 @@ config ARCH_NR_GPIO
 
 source kernel/Kconfig.preempt
 
-config HZ
+config HZ_FIXED
 	int
 	default 200 if ARCH_EBSA110 || ARCH_S3C24XX || ARCH_S5P64X0 || \
 		ARCH_S5PV210 || ARCH_EXYNOS4
 	default AT91_TIMER_HZ if ARCH_AT91
 	default SHMOBILE_TIMER_HZ if ARCH_SHMOBILE
-	default 100
+	default 0
+
+choice
+	depends on HZ_FIXED = 0
+	prompt "Timer frequency"
+
+config HZ_100
+	bool "100 Hz"
+
+config HZ_200
+	bool "200 Hz"
+
+config HZ_250
+	bool "250 Hz"
+
+config HZ_300
+	bool "300 Hz"
+
+config HZ_500
+	bool "500 Hz"
+
+config HZ_1000
+	bool "1000 Hz"
+
+endchoice
+
+config HZ
+	int
+	default HZ_FIXED if HZ_FIXED != 0
+	default 100 if HZ_100
+	default 200 if HZ_200
+	default 250 if HZ_250
+	default 300 if HZ_300
+	default 500 if HZ_500
+	default 1000
+
+config SCHED_HRTICK
+	def_bool HIGH_RES_TIMERS
 
 config SCHED_HRTICK
 	def_bool HIGH_RES_TIMERS
@@ -1723,7 +1749,7 @@ config AEABI
 config OABI_COMPAT
 	bool "Allow old ABI binaries to run with this kernel (EXPERIMENTAL)"
 	depends on AEABI && !THUMB2_KERNEL
-	default y if !SMP
+	default y
 	help
 	  This option preserves the old syscall interface along with the
 	  new (ARM EABI) one. It also provides a compatibility layer to
@@ -1781,54 +1807,7 @@ config HW_PERF_EVENTS
 	  Enable hardware performance counter support for perf events. If
 	  disabled, perf events will use software events only.
 
-config PERF_EVENTS_USERMODE
-	bool "Enable usermode access for perf events"
-	depends on PERF_EVENTS
-	help
-	  Enable user-mode access to performance counters for perf events.
-	  If enabled, the access permissions allowing CPU performance
-	  counters to be accessed from user-mode are set.
-
-config HAVE_ARCH_TRANSPARENT_HUGEPAGE
-       def_bool y
-       depends on ARM_LPAE
-
-config PERF_EVENTS_RESET_PMU_DEBUGFS
-	bool "Reset PMU via debugfs node"
-	depends on PERF_EVENTS
-	help
-		Enable the debugfs node that can be used to reset PMUs and all
-		state variables associated with PMUs. If enabled, PMU and internal
-		state variable are cleared.
-
 source "mm/Kconfig"
-
-choice
-	prompt "Virtual Memory Reclaim"
-	default NO_VM_RECLAIM
-	help
-	  Select the method of reclaiming virtual memory
-
-config ENABLE_VMALLOC_SAVING
-	bool "Reclaim memory for each subsystem"
-	help
-	  Enable this config to reclaim the virtual space belonging
-	  to any subsystem which is expected to have a lifetime of
-	  the entire system. This feature allows lowmem to be non-
-	  contiguous.
-
-config NO_VM_RECLAIM
-	bool "Do not reclaim memory"
-	help
-	  Do not reclaim any memory. This might result in less lowmem
-	  and wasting virtual memory space which could otherwise be
-	  reclaimed by using any of the other two config options.
-
-endchoice
-
-config HOLES_IN_ZONE
-	def_bool n
-	depends on SPARSEMEM
 
 config FORCE_MAX_ZONEORDER
 	int "Maximum zone order" if ARCH_SHMOBILE
@@ -1913,20 +1892,8 @@ config XEN
 	depends on CPU_V7 && !CPU_V6
 	depends on !GENERIC_ATOMIC64
 	select ARM_PSCI
-	select SWIOTLB_XEN
 	help
 	  Say Y if you want to run Linux in a Virtual Machine on Xen on ARM.
-
-config CP_ACCESS
-	tristate "CP register access tool"
-	default m
-	help
-	  Provide support for Coprocessor register access using /sys
-	  interface. Read and write to CP registers from userspace
-	  through sysfs interface. A sys file (cp_rw) will be created under
-	  /sys/devices/cpaccess/cpaccess0.
-
-	  If unsure, say N.
 
 config ARM_FLUSH_CONSOLE_ON_RESTART
 	bool "Force flush the console on restart"
@@ -1946,7 +1913,6 @@ config USE_OF
 	select IRQ_DOMAIN
 	select OF
 	select OF_EARLY_FLATTREE
-	select OF_RESERVED_MEM
 	help
 	  Include support for flattened device tree machine descriptions.
 
@@ -2205,17 +2171,6 @@ config AUTO_ZRELADDR
 	  will be determined at run-time by masking the current IP with
 	  0xf8000000. This assumes the zImage being placed in the first 128MB
 	  from start of memory.
-
-config ARM_DECOMPRESSOR_LIMIT
-	hex "Limit the decompressor memory area"
-	default 0x10000000
-	help
-	  Allows overriding of the memory size that decompressor maps with
-	  read, write and execute permissions to avoid speculative prefetch.
-
-	  By default ARM_DECOMPRESSOR_LIMIT maps first 1GB of memory
-	  with read, write and execute permissions and reset of the memory
-	  as strongly ordered.
 
 endmenu
 

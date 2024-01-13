@@ -70,13 +70,13 @@ static unsigned long mmap_rnd(void)
 	unsigned long rnd;
 
 	if (mmap_is_ia32())
-		#ifdef CONFIG_COMPAT
+#ifdef CONFIG_COMPAT
 			rnd = get_random_long() & ((1UL << mmap_rnd_compat_bits) - 1);
-		#else
+#else
 			rnd = get_random_long() & ((1UL << mmap_rnd_bits) - 1);
-		#endif
+#endif
 	else
-		rnd = get_random_long() & ((1UL << mmap_rnd_bits) - 1);
+			rnd = get_random_long() & ((1UL << mmap_rnd_bits) - 1);
 
 	return rnd << PAGE_SHIFT;
 }
@@ -109,8 +109,10 @@ void arch_pick_mmap_layout(struct mm_struct *mm)
 	if (mmap_is_legacy()) {
 		mm->mmap_base = mm->mmap_legacy_base;
 		mm->get_unmapped_area = arch_get_unmapped_area;
+		mm->unmap_area = arch_unmap_area;
 	} else {
 		mm->mmap_base = mmap_base(random_factor);
 		mm->get_unmapped_area = arch_get_unmapped_area_topdown;
+		mm->unmap_area = arch_unmap_area_topdown;
 	}
 }
