@@ -697,7 +697,6 @@ static void check_stack_usage(void)
 	static DEFINE_SPINLOCK(low_water_lock);
 	static int lowest_to_date = THREAD_SIZE;
 	unsigned long free;
-	int islower = false;
 
 	free = stack_not_used(current);
 
@@ -706,16 +705,12 @@ static void check_stack_usage(void)
 
 	spin_lock(&low_water_lock);
 	if (free < lowest_to_date) {
-		lowest_to_date = free;
-		islower = true;
-	}
-	spin_unlock(&low_water_lock);
-
-	if (islower) {
 		printk(KERN_WARNING "%s (%d) used greatest stack depth: "
 				"%lu bytes left\n",
 				current->comm, task_pid_nr(current), free);
+		lowest_to_date = free;
 	}
+	spin_unlock(&low_water_lock);
 }
 #else
 static inline void check_stack_usage(void) {}
@@ -753,12 +748,8 @@ void do_exit(long code)
 	 * leave this task alone and wait for reboot.
 	 */
 	if (unlikely(tsk->flags & PF_EXITING)) {
-#ifdef CONFIG_PANIC_ON_RECURSIVE_FAULT
-		panic("Recursive fault!\n");
-#else
 		printk(KERN_ALERT
 			"Fixing recursive fault but reboot is needed!\n");
-#endif
 		/*
 		 * We can do this unlocked here. The futex code uses
 		 * this flag just to verify whether the pi state
@@ -774,9 +765,6 @@ void do_exit(long code)
 	}
 
 	exit_signals(tsk);  /* sets PF_EXITING */
-
-	sched_exit(tsk);
-
 	/*
 	 * tsk->flags are checked in the futex code to protect against
 	 * an exiting task cleaning up the robust pi futexes.

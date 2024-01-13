@@ -218,8 +218,8 @@ void __ref __unregister_cpu_notifier(struct notifier_block *nb)
 }
 EXPORT_SYMBOL(__unregister_cpu_notifier);
 
-
 #ifdef CONFIG_HOTPLUG_CPU
+
 /**
  * clear_tasks_mm_cpumask - Safely clear tasks' mm_cpumask for a CPU
  * @cpu: a CPU id
@@ -547,6 +547,7 @@ void __weak arch_enable_nonboot_cpus_end(void)
 void __ref enable_nonboot_cpus(void)
 {
 	int cpu, error;
+	struct device *cpu_device;
 
 	/* Allow everyone to use the CPU hotplug again */
 	cpu_maps_update_begin();
@@ -562,6 +563,12 @@ void __ref enable_nonboot_cpus(void)
 		error = _cpu_up(cpu, 1);
 		if (!error) {
 			printk(KERN_INFO "CPU%d is up\n", cpu);
+			cpu_device = get_cpu_device(cpu);
+			if (!cpu_device)
+				pr_err("%s: failed to get cpu%d device\n",
+				       __func__, cpu);
+			else
+				kobject_uevent(&cpu_device->kobj, KOBJ_ONLINE);
 			continue;
 		}
 		printk(KERN_WARNING "Error taking CPU%d up: %d\n", cpu, error);
@@ -597,6 +604,7 @@ static int
 cpu_hotplug_pm_callback(struct notifier_block *nb,
 			unsigned long action, void *ptr)
 {
+	printk("*** %s, action:0x%x ***\n", __func__, action );
 	switch (action) {
 
 	case PM_SUSPEND_PREPARE:
@@ -612,6 +620,7 @@ cpu_hotplug_pm_callback(struct notifier_block *nb,
 	default:
 		return NOTIFY_DONE;
 	}
+	printk("*** %s, action:0x%x done ***\n", __func__, action );
 
 	return NOTIFY_OK;
 }

@@ -654,6 +654,7 @@ static inline void __trace_stack(struct trace_array *tr, unsigned long flags,
 extern cycle_t ftrace_now(int cpu);
 
 extern void trace_find_cmdline(int pid, char comm[]);
+extern int trace_find_tgid(int pid);
 
 #ifdef CONFIG_DYNAMIC_FTRACE
 extern unsigned long ftrace_update_tot_cnt;
@@ -735,15 +736,16 @@ extern void __trace_graph_return(struct trace_array *tr,
 #ifdef CONFIG_DYNAMIC_FTRACE
 /* TODO: make this variable */
 #define FTRACE_GRAPH_MAX_FUNCS		32
-extern int ftrace_graph_filter_enabled;
 extern int ftrace_graph_count;
 extern unsigned long ftrace_graph_funcs[FTRACE_GRAPH_MAX_FUNCS];
+extern int ftrace_graph_notrace_count;
+extern unsigned long ftrace_graph_notrace_funcs[FTRACE_GRAPH_MAX_FUNCS];
 
 static inline int ftrace_graph_addr(unsigned long addr)
 {
 	int i;
 
-	if (!ftrace_graph_filter_enabled)
+	if (!ftrace_graph_count)
 		return 1;
 
 	for (i = 0; i < ftrace_graph_count; i++) {
@@ -763,10 +765,30 @@ static inline int ftrace_graph_addr(unsigned long addr)
 
 	return 0;
 }
+
+static inline int ftrace_graph_notrace_addr(unsigned long addr)
+{
+	int i;
+
+	if (!ftrace_graph_notrace_count)
+		return 0;
+
+	for (i = 0; i < ftrace_graph_notrace_count; i++) {
+		if (addr == ftrace_graph_notrace_funcs[i])
+			return 1;
+	}
+
+	return 0;
+}
 #else
 static inline int ftrace_graph_addr(unsigned long addr)
 {
 	return 1;
+}
+
+static inline int ftrace_graph_notrace_addr(unsigned long addr)
+{
+	return 0;
 }
 #endif /* CONFIG_DYNAMIC_FTRACE */
 #else /* CONFIG_FUNCTION_GRAPH_TRACER */
@@ -867,6 +889,7 @@ enum trace_iterator_flags {
 	TRACE_ITER_IRQ_INFO		= 0x800000,
 	TRACE_ITER_MARKERS		= 0x1000000,
 	TRACE_ITER_FUNCTION		= 0x2000000,
+	TRACE_ITER_TGID 		= 0x4000000,
 };
 
 /*
