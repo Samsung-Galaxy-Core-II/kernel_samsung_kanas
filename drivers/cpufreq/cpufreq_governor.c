@@ -16,11 +16,20 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#include <asm/cputime.h>
+#include <linux/cpufreq.h>
+#include <linux/cpumask.h>
 #include <linux/export.h>
 #include <linux/kernel_stat.h>
+#include <linux/mutex.h>
 #include <linux/slab.h>
+#include <linux/types.h>
+#include <linux/workqueue.h>
+/*#include <linux/input.h>*/
 
 #include "cpufreq_governor.h"
+
+/*extern struct input_handler dbs_input_handler;*/
 
 static struct attribute_group *get_sysfs_attr(struct dbs_data *dbs_data)
 {
@@ -123,14 +132,7 @@ void gov_queue_work(struct dbs_data *dbs_data, struct cpufreq_policy *policy,
 		return;
 
 	if (!all_cpus) {
-		/*
-		 * Use raw_smp_processor_id() to avoid preemptible warnings.
-		 * We know that this is only called with all_cpus == false from
-		 * works that have been queued with *_work_on() functions and
-		 * those works are canceled during CPU_DOWN_PREPARE so they
-		 * can't possibly run on any other CPU.
-		 */
-		__gov_queue_work(raw_smp_processor_id(), dbs_data, delay);
+		__gov_queue_work(smp_processor_id(), dbs_data, delay);
 	} else {
 		for_each_cpu(i, policy->cpus)
 			__gov_queue_work(i, dbs_data, delay);
@@ -227,9 +229,6 @@ int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 			return rc;
 		}
 
-		if (!have_governor_per_policy())
-			WARN_ON(cpufreq_get_global_kobject());
-
 		rc = sysfs_create_group(get_governor_parent_kobj(policy),
 				get_sysfs_attr(dbs_data));
 		if (rc) {
@@ -240,7 +239,7 @@ int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 
 		policy->governor_data = dbs_data;
 
-		/* policy latency is in ns. Convert it to us first */
+		/* policy latency is in nS. Convert it to uS first */
 		latency = policy->cpuinfo.transition_latency / 1000;
 		if (latency == 0)
 			latency = 1;
@@ -267,9 +266,6 @@ int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 		if (!--dbs_data->usage_count) {
 			sysfs_remove_group(get_governor_parent_kobj(policy),
 					get_sysfs_attr(dbs_data));
-
-			if (!have_governor_per_policy())
-				cpufreq_put_global_kobject();
 
 			if ((dbs_data->cdata->governor == GOV_CONSERVATIVE) &&
 				(policy->governor->initialized == 1)) {
@@ -328,6 +324,10 @@ int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 					     dbs_data->cdata->gov_dbs_timer);
 		}
 
+		/*
+		 * conservative does not implement micro like ondemand
+		 * governor, thus we are bound to jiffes/HZ
+		 */
 		if (dbs_data->cdata->governor == GOV_CONSERVATIVE) {
 			cs_dbs_info->down_skip = 0;
 			cs_dbs_info->enable = 1;
@@ -338,6 +338,13 @@ int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 			od_ops->powersave_bias_init_cpu(cpu);
 		}
 
+/*		if(!cpu)
+		{
+			if(input_register_handler(&dbs_input_handler))
+			{
+				pr_err("[DVFS] input_register_handler failed\n");
+			}
+		}*/
 		mutex_unlock(&dbs_data->mutex);
 
 		/* Initiate timer time stamp */
@@ -357,11 +364,22 @@ int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 		mutex_destroy(&cpu_cdbs->timer_mutex);
 		cpu_cdbs->cur_policy = NULL;
 
+	/*	if (!cpu)
+		{
+			input_unregister_handler(&dbs_input_handler);
+		}*/
+
+
 		mutex_unlock(&dbs_data->mutex);
 
 		break;
 
 	case CPUFREQ_GOV_LIMITS:
+		mutex_lock(&dbs_data->mutex);
+		if (!cpu_cdbs->cur_policy) {
+			mutex_unlock(&dbs_data->mutex);
+			break;
+		}
 		mutex_lock(&cpu_cdbs->timer_mutex);
 		if (policy->max < cpu_cdbs->cur_policy->cur)
 			__cpufreq_driver_target(cpu_cdbs->cur_policy,
@@ -371,6 +389,7 @@ int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 					policy->min, CPUFREQ_RELATION_L);
 		dbs_check_cpu(dbs_data, cpu);
 		mutex_unlock(&cpu_cdbs->timer_mutex);
+		mutex_unlock(&dbs_data->mutex);
 		break;
 	}
 	return 0;

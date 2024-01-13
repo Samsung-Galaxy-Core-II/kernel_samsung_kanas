@@ -117,7 +117,7 @@ config I2C_I801
 
 config I2C_ISCH
 	tristate "Intel SCH SMBus 1.0"
-	depends on PCI
+	depends on PCI && GENERIC_HARDIRQS
 	select LPC_SCH
 	help
 	  Say Y here if you want to use SMBus controller on the Intel SCH
@@ -509,24 +509,6 @@ config I2C_MPC
 	  This driver can also be built as a module.  If so, the module
 	  will be called i2c-mpc.
 
-config I2C_QUP
-	tristate "I2C_QUP"
-	depends on ARCH_MSM
-	help
-	  If you say yes to this option, support will be included for the
-	  built-in I2C interface on the MSM family processors.
-
-config I2C_MSM_V2
-	tristate "I2C_MSM_V2"
-	depends on ARCH_MSM
-	help
-	  If you say yes to this option, support will be included for the
-	  built-in I2C interface and its DMA engine on the MSM family
-	  processors.
-
-	  This driver can also be built as a module.  If so, the module
-	  will be called i2c-msm-v2.
-
 config I2C_MV64XXX
 	tristate "Marvell mv64xxx I2C Controller"
 	depends on (MV64X60 || PLAT_ORION)
@@ -565,6 +547,7 @@ config I2C_NUC900
 
 config I2C_OCORES
 	tristate "OpenCores I2C Controller"
+	depends on GENERIC_HARDIRQS
 	help
 	  If you say yes to this option, support will be included for the
 	  OpenCores I2C controller. For details see
@@ -785,6 +768,39 @@ config I2C_RCAR
 	  This driver can also be built as a module.  If so, the module
 	  will be called i2c-rcar.
 
+config I2C_SC8810
+	tristate "SC8810 I2C Driver"
+	depends on ARCH_SC8810
+	help
+	  Say Y here to include support for I2C controller in the
+	  Spreadtrum SC8810 based System-on-Chip devices.
+
+config I2C_RESUME_EARLY
+	bool "I2C host will resume from deepsleep before any driver"
+	help
+	  Say Y here to let i2c controller resume early than any driver from deepsleep
+
+config I2C_5_CLOCK_TREE_BUG
+	bool "i2c adapter5 clock is clk_i2c, not clk_i2c5"
+	help
+	  Say Y clock tree bug, i2c adapter above 5, the clock tree is wrong
+
+config I2C_SPRD
+	tristate "SPRD I2C Driver(polling)"
+	default y
+	help
+	  Say Y here to include support for I2C controller in the
+	  Spreadtrum SC88xx based System-on-Chip devices.
+
+comment "External I2C/SMBus adapter drivers"
+
+
+config I2C_SPRD_V1
+	tristate "SPRD I2C Driver(INT)"
+	help
+	  Say Y here to include support for I2C controller in the
+	  Spreadtrum SC88xx based System-on-Chip devices.
+
 comment "External I2C/SMBus adapter drivers"
 
 config I2C_DIOLAN_U2C
@@ -799,7 +815,7 @@ config I2C_DIOLAN_U2C
 
 config I2C_PARPORT
 	tristate "Parallel port adapter"
-	depends on PARPORT
+	depends on PARPORT && GENERIC_HARDIRQS
 	select I2C_ALGOBIT
 	select I2C_SMBUS
 	help
@@ -824,6 +840,7 @@ config I2C_PARPORT
 
 config I2C_PARPORT_LIGHT
 	tristate "Parallel port adapter (light)"
+	depends on GENERIC_HARDIRQS
 	select I2C_ALGOBIT
 	select I2C_SMBUS
 	help
@@ -897,7 +914,7 @@ config I2C_ACORN
 
 config I2C_ELEKTOR
 	tristate "Elektor ISA card"
-	depends on ISA && HAS_IOPORT_MAP && BROKEN_ON_SMP
+	depends on ISA && HAS_IOPORT && BROKEN_ON_SMP
 	select I2C_ALGOPCF
 	help
 	  This supports the PCF8584 ISA bus I2C adapter.  Say Y if you own

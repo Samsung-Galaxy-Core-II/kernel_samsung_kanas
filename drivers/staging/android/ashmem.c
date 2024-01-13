@@ -31,8 +31,6 @@
 #include <linux/bitops.h>
 #include <linux/mutex.h>
 #include <linux/shmem_fs.h>
-#include <linux/ashmem.h>
-
 #include "ashmem.h"
 
 #define ASHMEM_NAME_PREFIX "dev/ashmem/"
@@ -50,8 +48,6 @@ struct ashmem_area {
 	struct list_head unpinned_list;	 /* list of all ashmem areas */
 	struct file *file;		 /* the shmem-based backing file */
 	size_t size;			 /* size of the mapping, in bytes */
-	unsigned long vm_start;		 /* Start address of vm_area
-					  * which maps this ashmem */
 	unsigned long prot_mask;	 /* allowed prot bits, as vm_flags */
 };
 
@@ -336,7 +332,6 @@ static int ashmem_mmap(struct file *file, struct vm_area_struct *vma)
 			fput(vma->vm_file);
 		vma->vm_file = asma->file;
 	}
-	asma->vm_start = vma->vm_start;
 
 out:
 	mutex_unlock(&ashmem_mutex);
@@ -743,57 +738,6 @@ static struct miscdevice ashmem_misc = {
 	.name = "ashmem",
 	.fops = &ashmem_fops,
 };
-
-static int is_ashmem_file(struct file *file)
-{
-	return (file->f_op == &ashmem_fops);
-}
-
-int get_ashmem_file(int fd, struct file **filp, struct file **vm_file,
-			unsigned long *len)
-{
-	int ret = -1;
-	struct file *file = fget(fd);
-	*filp = NULL;
-	*vm_file = NULL;
-	if (unlikely(file == NULL)) {
-		pr_err("ashmem: %s: requested data from file "
-			"descriptor that doesn't exist.\n", __func__);
-	} else {
-		char currtask_name[FIELD_SIZEOF(struct task_struct, comm) + 1];
-		pr_debug("filp %p rdev %d pid %u(%s) file %p(%ld)"
-			" dev id: %d\n", filp,
-			file->f_dentry->d_inode->i_rdev,
-			current->pid, get_task_comm(currtask_name, current),
-			file, file_count(file),
-			MINOR(file->f_dentry->d_inode->i_rdev));
-		if (is_ashmem_file(file)) {
-			struct ashmem_area *asma = file->private_data;
-			*filp = file;
-			*vm_file = asma->file;
-			*len = asma->size;
-			ret = 0;
-		} else {
-			pr_err("file descriptor is not an ashmem "
-				"region fd: %d\n", fd);
-			fput(file);
-		}
-	}
-	return ret;
-}
-EXPORT_SYMBOL(get_ashmem_file);
-
-void put_ashmem_file(struct file *file)
-{
-	char currtask_name[FIELD_SIZEOF(struct task_struct, comm) + 1];
-	pr_debug("rdev %d pid %u(%s) file %p(%ld)" " dev id: %d\n",
-		file->f_dentry->d_inode->i_rdev, current->pid,
-		get_task_comm(currtask_name, current), file,
-		file_count(file), MINOR(file->f_dentry->d_inode->i_rdev));
-	if (file && is_ashmem_file(file))
-		fput(file);
-}
-EXPORT_SYMBOL(put_ashmem_file);
 
 static int __init ashmem_init(void)
 {
