@@ -74,8 +74,8 @@
 #include <linux/ptrace.h>
 #include <linux/blkdev.h>
 #include <linux/elevator.h>
-#include <linux/sched_clock.h>
 #include <linux/random.h>
+#include <linux/bootperf.h>
 
 #include <asm/io.h>
 #include <asm/bugs.h>
@@ -85,6 +85,10 @@
 
 #ifdef CONFIG_X86_LOCAL_APIC
 #include <asm/smp.h>
+#endif
+
+#ifdef CONFIG_SEC_GPIO_DVS
+#include <linux/secgpio_dvs.h>
 #endif
 
 static int kernel_init(void *);
@@ -366,7 +370,6 @@ static __initdata DECLARE_COMPLETION(kthreadd_done);
 static noinline void __init_refok rest_init(void)
 {
 	int pid;
-	const struct sched_param param = { .sched_priority = 1 };
 
 	rcu_scheduler_starting();
 	/*
@@ -380,7 +383,6 @@ static noinline void __init_refok rest_init(void)
 	rcu_read_lock();
 	kthreadd_task = find_task_by_pid_ns(pid, &init_pid_ns);
 	rcu_read_unlock();
-	sched_setscheduler_nocheck(kthreadd_task, SCHED_FIFO, &param);
 	complete(&kthreadd_done);
 
 	/*
@@ -485,6 +487,11 @@ asmlinkage void __init start_kernel(void)
 	smp_setup_processor_id();
 	debug_objects_early_init();
 
+	/*
+	 * Set up the the initial canary ASAP:
+	 */
+	boot_init_stack_canary();
+
 	cgroup_init_early();
 
 	local_irq_disable();
@@ -498,10 +505,6 @@ asmlinkage void __init start_kernel(void)
 	page_address_init();
 	pr_notice("%s", linux_banner);
 	setup_arch(&command_line);
-	/*
-	 * Set up the the initial canary ASAP:
-	 */
-	boot_init_stack_canary();
 	mm_init_owner(&init_mm, &init_task);
 	mm_init_cpumask(&init_mm);
 	setup_command_line(command_line);
@@ -558,7 +561,6 @@ asmlinkage void __init start_kernel(void)
 	softirq_init();
 	timekeeping_init();
 	time_init();
-	sched_clock_postinit();
 	profile_init();
 	call_function_init();
 	WARN(!irqs_disabled(), "Interrupts were enabled early\n");
@@ -671,14 +673,27 @@ static int __init_or_module do_one_initcall_debug(initcall_t fn)
 	unsigned long long duration;
 	int ret;
 
+	char name[256]={0};
+#ifndef CONFIG_BOOT_PERF
 	pr_debug("calling  %pF @ %i\n", fn, task_pid_nr(current));
+#endif
 	calltime = ktime_get();
 	ret = fn();
 	rettime = ktime_get();
 	delta = ktime_sub(rettime, calltime);
 	duration = (unsigned long long) ktime_to_ns(delta) >> 10;
+#ifdef CONFIG_BOOT_PERF
+	if(duration >1000)
+	{
+		memset(name,0,256);
+		snprintf(name, 255, "%pF", fn);
+		log_boot(name,  duration);
+	}
+
+#else
 	pr_debug("initcall %pF returned %d after %lld usecs\n",
 		 fn, ret, duration);
+#endif
 
 	return ret;
 }
@@ -687,6 +702,9 @@ int __init_or_module do_one_initcall(initcall_t fn)
 {
 	int count = preempt_count();
 	int ret;
+#ifdef CONFIG_BOOT_PERF
+	initcall_debug =1;
+#endif
 
 	if (initcall_debug)
 		ret = do_one_initcall_debug(fn);
@@ -819,6 +837,9 @@ static noinline void __init kernel_init_freeable(void);
 
 static int __ref kernel_init(void *unused)
 {
+	#ifdef CONFIG_SEC_GPIO_DVS
+	gpio_dvs_check_initgpio();
+	#endif
 	kernel_init_freeable();
 	/* need to finish all async __init code before freeing the memory */
 	async_synchronize_full();
