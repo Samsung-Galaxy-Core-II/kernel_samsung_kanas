@@ -90,12 +90,6 @@ struct cfg80211_registered_device {
 	/* netlink port which started critical protocol (0 means not started) */
 	u32 crit_proto_nlportid;
 
-	spinlock_t destroy_list_lock;
-	struct list_head destroy_list;
-	struct work_struct destroy_work;
-
-	struct work_struct sched_scan_stop_wk;
-
 	/* must be last because of the way we do wiphy_priv(),
 	 * and it should at least be aligned to NETDEV_ALIGN */
 	struct wiphy wiphy __aligned(NETDEV_ALIGN);
@@ -230,6 +224,7 @@ struct cfg80211_event {
 			const u8 *resp_ie;
 			size_t req_ie_len;
 			size_t resp_ie_len;
+			struct cfg80211_bss *bss;
 			u16 status;
 		} cr;
 		struct {
@@ -266,13 +261,6 @@ struct cfg80211_beacon_registration {
 	struct list_head list;
 	u32 nlportid;
 };
-
-struct cfg80211_iface_destroy {
-	struct list_head list;
-	u32 nlportid;
-};
-
-void cfg80211_destroy_ifaces(struct cfg80211_registered_device *rdev);
 
 /* free object */
 extern void cfg80211_dev_free(struct cfg80211_registered_device *rdev);
@@ -504,6 +492,9 @@ cfg80211_get_chan_state(struct wireless_dev *wdev,
 
 int cfg80211_set_monitor_channel(struct cfg80211_registered_device *rdev,
 				 struct cfg80211_chan_def *chandef);
+int ieee80211_get_ratemask(struct ieee80211_supported_band *sband,
+			   const u8 *rates, unsigned int n_rates,
+			   u32 *mask);
 
 int ieee80211_get_ratemask(struct ieee80211_supported_band *sband,
 			   const u8 *rates, unsigned int n_rates,
@@ -514,9 +505,6 @@ int cfg80211_validate_beacon_int(struct cfg80211_registered_device *rdev,
 
 void cfg80211_update_iface_num(struct cfg80211_registered_device *rdev,
 			       enum nl80211_iftype iftype, int num);
-
-void cfg80211_leave(struct cfg80211_registered_device *rdev,
-		    struct wireless_dev *wdev);
 
 void cfg80211_stop_p2p_device(struct cfg80211_registered_device *rdev,
 			      struct wireless_dev *wdev);
